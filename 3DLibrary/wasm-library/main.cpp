@@ -24,6 +24,12 @@
 #include <CGAL/Surface_mesh_parameterization/Circular_border_parameterizer_3.h>
 #include <CGAL/Surface_mesh_parameterization/Discrete_authalic_parameterizer_3.h>
 #include <CGAL/Surface_mesh_parameterization/Error_code.h>
+#include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
+#include <CGAL/Surface_mesh.h>
+#include <CGAL/Polygon_mesh_processing/detect_features.h>
+#include <CGAL/Polygon_mesh_processing/surface_Delaunay_remeshing.h>
+#include <CGAL/Polygon_mesh_processing/IO/polygon_mesh_io.h>
+#include <CGAL/Mesh_constant_domain_field_3.h>
 
 #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
 #include <CGAL/Polyhedron_3.h>
@@ -33,6 +39,8 @@
 
 typedef CGAL::Simple_cartesian<double> Kernel;
 typedef CGAL::Surface_mesh<Kernel::Point_3> SurfaceMesh;
+
+namespace PMP = CGAL::Polygon_mesh_processing;
 
 class PolyMesh {
     private:
@@ -148,6 +156,25 @@ class PolyMesh {
             return true;
         }
 
+        emscripten::val remesh_delaunay() {
+            using EIFMap = boost::property_map<SurfaceMesh, CGAL::edge_is_feature_t>::type;
+            EIFMap eif = get(CGAL::edge_is_feature, mesh);
+            PMP::detect_sharp_edges(mesh, 45, eif);
+            SurfaceMesh outmesh = PMP::surface_Delaunay_remeshing(mesh,
+                                  CGAL::parameters::protect_constraints(true)
+                                 .mesh_edge_size(0.02)
+                                 .mesh_facet_distance(0.01)
+                                 .edge_is_constrained_map(eif));
+            std::vector<double> vertices;
+            for(auto vertexIt = outmesh.vertices_begin(); vertexIt != outmesh.vertices_end(); ++vertexIt){
+                auto point = outmesh.point(*vertexIt);
+                vertices.push_back(point.x());
+                vertices.push_back(point.y());
+                vertices.push_back(point.z());
+            }
+            return emscripten::val(emscripten::typed_memory_view(vertices.size(), vertices.data()));
+        }
+
         emscripten::val getVertices(){
             std::vector<double> vertices;
             for(auto vertexIt = mesh.vertices_begin(); vertexIt != mesh.vertices_end(); ++vertexIt){
@@ -217,5 +244,6 @@ EMSCRIPTEN_BINDINGS(my_module) {
     .function("sqrt_smooth", &PolyMesh::sqrt_smooth, emscripten::allow_raw_pointers())
     .function("dooSabin_smooth", &PolyMesh::dooSabin_smooth, emscripten::allow_raw_pointers())
     .function("segment", &PolyMesh::segment, emscripten::allow_raw_pointers())
-    .function("decimate", &PolyMesh::decimate, emscripten::allow_raw_pointers());
+    .function("decimate", &PolyMesh::decimate, emscripten::allow_raw_pointers())
+    .function("remesh_delaunay", &PolyMesh::remesh_delaunay, emscripten::allow_raw_pointers());
 }
