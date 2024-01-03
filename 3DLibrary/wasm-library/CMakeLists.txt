@@ -7,14 +7,14 @@ project( cgalTest )
 
 
 # Include cgal and boost headers
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/libraries/CGAL-5.5.2/include)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/libraries/CGAL-5.6/include)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/libraries/boost_1_81_0)
 # include libigl
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/libraries/libigl-2.4.0/include)
 # # include gmp
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/libraries/gmp-6.2.1)
 
-set(CGAL_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/libraries/CGAL-5.5.2/include)
+set(CGAL_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/libraries/CGAL-5.6/include)
 set(BOOST_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/libraries/boost_1_81_0)
 
 set(LIBIGL_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/libraries/libigl-2.4.0/include)
@@ -53,7 +53,7 @@ add_definitions(-w)
 set_target_properties(main
 PROPERTIES OUTPUT_NAME "index"
 CFLAGS "-O3"
-LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1 -s WASM=1 -s DEMANGLE_SUPPORT=1 --bind"
+LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1 -sNO_DISABLE_EXCEPTION_CATCHING -s WASM=1 -s DEMANGLE_SUPPORT=1 -sASSERTIONS --bind"
 )
 
 

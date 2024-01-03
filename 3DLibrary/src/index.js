@@ -12,6 +12,8 @@ import { AdvancedDynamicTexture } from '@babylonjs/gui/2D/advancedDynamicTexture
 import { StackPanel } from '@babylonjs/gui/2D/controls/stackPanel';
 import { Button } from '@babylonjs/gui/2D/controls/button';
 import { Control } from '@babylonjs/gui';
+import { MeshBuilder } from "@babylonjs/core";
+import { STLExport } from "@babylonjs/serializers";
 
 export function renderScene() {
     const canvas = document.getElementById("app");
@@ -48,7 +50,7 @@ export function renderScene() {
 }
 
 renderScene().then((scene) => {
-    const url = "https://rawcdn.githack.com/rezaali/webgl-sketches/master/models/bigguy.obj";
+    const url = "/gumline.obj";
   
     readFile(url, (data) => {
         let { positions, cells } = objPars(data, null);
@@ -63,6 +65,17 @@ renderScene().then((scene) => {
             polyMesh.addFace(face);
         }
 
+        function getMeshFromPolyMesh(polyMesh) {
+            let positions_buffer = polyMesh.getVertices();
+            positions = Array.from(positions_buffer);
+            positions_buffer = null;
+    
+            let triangles_buffer = polyMesh.getIndices();
+            let indices = Array.from(triangles_buffer);
+            triangles_buffer = null;
+    
+            return {positions, indices};
+        }
 
         //retrive polymesh data
         function getMeshData(){
@@ -73,7 +86,7 @@ renderScene().then((scene) => {
             let triangles_buffer = polyMesh.getIndices();
             let indices = Array.from(triangles_buffer);
             triangles_buffer = null;
-
+    
             return {positions, indices};
         }
 
@@ -122,11 +135,75 @@ renderScene().then((scene) => {
         let sqrtBt = Button.CreateSimpleButton("but4", "Sqrt");
         sqrtBt.height = "40px";
         sqrtBt.onPointerUpObservable.add(function() {
-        polyMesh.sqrt_smooth();
-        const mesh_data = getMeshData();
-        updateMesh(mesh, {...mesh_data, colors: null});
+            polyMesh.sqrt_smooth();
+            const mesh_data = getMeshData();
+            updateMesh(mesh, {...mesh_data, colors: null});
         });
         stackPanel.addControl(sqrtBt);
+
+        let delaunayRemeshBt = Button.CreateSimpleButton("but4", "Delaunay Remesh");
+        delaunayRemeshBt.height = "40px";
+        delaunayRemeshBt.onPointerUpObservable.add(function() {
+            const outMesh = polyMesh.remesh_delaunay();
+            const meshData = getMeshFromPolyMesh(outMesh);
+            updateMesh(mesh, {...meshData, colors: null});
+            setTimeout(() => {
+                STLExport.CreateSTL([mesh], true, 'foo.stl', true);
+            }, 5000);
+            // console.log(meshData);
+            // const n = data.length;
+            // const nvecs = n / 3;
+            // for (let i = 0; i < nvecs; i += 3) {
+            //     const sp = MeshBuilder.CreateSphere(`ms_${i}`, {
+            //         diameter: 0.1,
+            //     });
+            //     sp.position.x = data[i];
+            //     sp.position.y = data[i + 1];
+            //     sp.position.z = data[i + 2];
+            // }
+            // const mesh_data = getMeshData();
+            // updateMesh(mesh, {...mesh_data, colors: null});
+        });
+        stackPanel.addControl(delaunayRemeshBt);
+
+        let isotropicRemeshBt = Button.CreateSimpleButton("but4", "Isotropic Remesh");
+        isotropicRemeshBt.height = "40px";
+        isotropicRemeshBt.onPointerUpObservable.add(function() {
+            polyMesh.remesh_isotropic();
+            const meshData = getMeshFromPolyMesh(polyMesh);
+            updateMesh(mesh, {...meshData, colors: null});
+            setTimeout(() => {
+                STLExport.CreateSTL([mesh], true, 'foo.stl', true);
+            }, 5000);
+            // console.log(meshData);
+            // const n = data.length;
+            // const nvecs = n / 3;
+            // for (let i = 0; i < nvecs; i += 3) {
+            //     const sp = MeshBuilder.CreateSphere(`ms_${i}`, {
+            //         diameter: 0.1,
+            //     });
+            //     sp.position.x = data[i];
+            //     sp.position.y = data[i + 1];
+            //     sp.position.z = data[i + 2];
+            // }
+            // const mesh_data = getMeshData();
+            // updateMesh(mesh, {...mesh_data, colors: null});
+        });
+        stackPanel.addControl(isotropicRemeshBt);
+
+        let domainRemeshBt = Button.CreateSimpleButton("but4", "Domain Remesh");
+        domainRemeshBt.height = "40px";
+        domainRemeshBt.onPointerUpObservable.add(function() {
+            const outMesh = polyMesh.polyhedral_mesh_generation();
+            console.log('done');
+            console.log(outMesh);
+            const meshData = getMeshFromPolyMesh(outMesh);
+            updateMesh(mesh, {...meshData, colors: null});
+            setTimeout(() => {
+                STLExport.CreateSTL([mesh], true, 'foo.stl', true);
+            }, 1000);
+        });
+        stackPanel.addControl(domainRemeshBt);
 
 
         const myLines = [];
