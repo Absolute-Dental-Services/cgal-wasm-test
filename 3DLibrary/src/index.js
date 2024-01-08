@@ -54,6 +54,10 @@ renderScene().then((scene) => {
   
     readFile(url, (data) => {
         let { positions, cells } = objPars(data, null);
+        console.log(cells);
+        console.log('cells');
+        console.log(positions);
+        console.log('positions');
 
         const polyMesh = new global.Module.PolyMesh();
         for(let i = 0; i < positions.length; i++){
@@ -204,6 +208,19 @@ renderScene().then((scene) => {
             }, 1000);
         });
         stackPanel.addControl(domainRemeshBt);
+
+        let refineButton = Button.CreateSimpleButton("but4", "Refine");
+        refineButton.height = "40px";
+        refineButton.onPointerUpObservable.add(function() {
+            // polyMesh.print_max_edge_length();
+            polyMesh.refine(0.5);
+            const meshData = getMeshFromPolyMesh(polyMesh);
+            updateMesh(mesh, {...meshData, colors: null});
+            // setTimeout(() => {
+            //     STLExport.CreateSTL([mesh], true, 'foo.stl', true);
+            // }, 1000);
+        });
+        stackPanel.addControl(refineButton);
 
 
         const myLines = [];

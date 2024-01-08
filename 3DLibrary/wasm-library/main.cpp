@@ -1,5 +1,7 @@
 #define CGAL_EIGEN3_ENABLED
-#define CGAL_PMP_REMESHING_VERBOSE
+#define CGAL_PMP_REMESHING_VERY_VERBOSE
+#define CGAL_PMP_REMESHING_VERBOSE_PROGRESS
+#define CGAL_PMP_REFINE_DEBUG
 
 #include <iostream>
 #include <CGAL/Simple_cartesian.h>
@@ -53,15 +55,24 @@
 #include <CGAL/Polygon_mesh_processing/angle_and_area_smoothing.h>
 #include <CGAL/Polygon_mesh_processing/repair_degeneracies.h>
 #include <CGAL/Polygon_mesh_processing/orientation.h>
+#include <CGAL/Polygon_mesh_processing/refine.h>
 
 typedef CGAL::Exact_predicates_inexact_constructions_kernel K;
-typedef CGAL::Polyhedral_mesh_domain_with_features_3<K> Mesh_domain;
+
 // Polyhedron type
 typedef CGAL::Mesh_polyhedron_3<K>::type Polyhedron;
+typedef CGAL::Polyhedral_mesh_domain_with_features_3<K> Mesh_domain;
+
+#ifdef CGAL_CONCURRENT_MESH_3
+typedef CGAL::Parallel_tag Concurrency_tag;
+#else
+typedef CGAL::Sequential_tag Concurrency_tag;
+#endif
+
 // Triangulation
-typedef CGAL::Mesh_triangulation_3<Mesh_domain>::type Tr;
-typedef CGAL::Mesh_complex_3_in_triangulation_3<
-  Tr,Mesh_domain::Corner_index,Mesh_domain::Curve_index> C3t3;
+typedef CGAL::Mesh_triangulation_3<Mesh_domain, CGAL::Default, Concurrency_tag>::type Tr;
+typedef CGAL::Mesh_complex_3_in_triangulation_3<Tr,Mesh_domain::Corner_index,Mesh_domain::Curve_index> C3t3;
+
 // Criteria
 typedef CGAL::Mesh_criteria_3<Tr> Mesh_criteria;
 
@@ -115,7 +126,34 @@ class PolyMesh {
                 faceVerts.push_back(mesh.vertices().begin()[vertices[i].as<int>()]);
             }
             auto fc = mesh.add_face(faceVerts);
+            assert(fc != Mesh::null_face());
+            // std::cout << "add face: " << fc << std::endl;
             return fc.idx();
+        }
+        void print_something() {
+            // or the C++11 for loop. Note that there is a ':' and not a ',' as in BOOST_FOREACH
+            for(SurfaceMesh::vertex_index vd : mesh.vertices()){
+                // auto he = mesh.halfedge(vd);
+                auto v = mesh.point(vd);
+                std::cout << vd << std::endl;
+            }
+        }
+        void print_max_edge_length() {
+            double max_length = 0.0;
+            SurfaceMesh::vertex_index v0, v1;
+            SurfaceMesh::Point p0, p1;
+            double d;
+            for (SurfaceMesh::edge_index ei : mesh.edges()) {
+                v0 = mesh.vertex(ei, 0);
+                v1 = mesh.vertex(ei, 1);
+                p0 = mesh.point(v0);
+                p1 = mesh.point(v1);
+                d = CGAL::squared_distance(p0, p1);
+                if (d > max_length) {
+                    max_length = d;
+                }
+            }
+            std::cout << "max edge length: " << max_length << std::endl;
         }
         void triangulate(SurfaceMesh & targetMesh){
             CGAL::Polygon_mesh_processing::triangulate_faces(targetMesh);
@@ -207,47 +245,63 @@ class PolyMesh {
             return true;
         }
 
-        void remesh_isotropic() {
-            // Polyhedron poly;
-            // CGAL::copy_face_graph(mesh, poly);
-            // std::vector<Polyhedron::Facet_handle>  new_facets;
-            // std::vector<Polyhedron::Vertex_handle> new_vertices;
+        void refine(double target_edge_length) {
+            std::vector<SurfaceMesh::Face_index>  new_facets;
+            std::vector<SurfaceMesh::Vertex_index> new_vertices;
 
-            // auto fo = new_facets[0];
-
-            // PMP::refine(mesh, CGAL::faces(mesh),
-            //   std::back_inserter(new_facets),
-            //   std::back_inserter(new_vertices),
-            //   CGAL::parameters::density_control_factor(0.5));
-
-            // mesh.clear();
-            // SurfaceMesh m;
-            // for (const auto v : new_vertices) {
-            //     m.add_vertex(v.node->point);
-            // }
-            // for (const auto f : new_facets) {
-            //     f.node->halfedge
-            // }
-
-            // mesh.collect_garbage();
-            // CGAL::copy_face_graph(poly, mesh);
-            // poly.clear();
-
-            double target_edge_length = 0.5;
+            std::cout << "mesh Vs: " << mesh.num_vertices() << std::endl;
+            std::cout << "mesh Fs: " << mesh.num_faces() << std::endl;
             unsigned int nb_iter = 1;
             std::vector<edge_descriptor> border;
             PMP::border_halfedges(mesh.faces(), mesh, boost::make_function_output_iterator(halfedge2edge(mesh, border)));
             PMP::split_long_edges(border, target_edge_length, mesh);
-            // PMP::remove_almost_degenerate_faces(CGAL::faces(mesh), mesh);
-            PMP::orient_to_bound_a_volume(mesh);
-            // PMP::angle_and_area_smoothing(mesh.faces(), mesh, CGAL::parameters::use_area_smoothing(false));
-            // PMP::isotropic_remeshing(mesh.faces(), target_edge_length, mesh,
-            //         CGAL::parameters::number_of_iterations(nb_iter)
-            //             .do_flip(false)
-            //             .do_project(true)
-            //             .do_split(true)
-            //             .protect_constraints(true)); //i.e. protect border, here
+
+            // PMP::refine(mesh, CGAL::faces(mesh),
+            //   std::back_inserter(new_facets),
+            //   std::back_inserter(new_vertices),
+            //   CGAL::parameters::density_control_factor(10.));
+
+            using EIFMap = boost::property_map<SurfaceMesh, CGAL::edge_is_feature_t>::type;
+            EIFMap eif = get(CGAL::edge_is_feature, mesh);
+            PMP::detect_sharp_edges(mesh, 45, eif);
+
+            // PMP::fair(mesh, CGAL::vertices(mesh), CGAL::parameters::)
+
+            PMP::tangential_relaxation(mesh, CGAL::parameters::edge_is_constrained_map(eif).protect_constraints(true));
+
+            PMP::reverse_face_orientations(mesh);
+
+            // PMP::angle_and_area_smoothing(mesh.faces(), mesh, 
+            //     CGAL::parameters::use_area_smoothing(false)
+            //         .use_angle_smoothing(true)
+            //         .edge_is_constrained_map(eif));
+            std::cout << "mesh Vs: " << mesh.num_vertices() << std::endl;
+            std::cout << "mesh Fs: " << mesh.num_faces() << std::endl;
         }
+
+        void remesh_isotropic() {
+            double target_edge_length = 0.5;
+            unsigned int nb_iter = 1;
+            std::vector<edge_descriptor> border;
+            PMP::border_halfedges(mesh.faces(), mesh, boost::make_function_output_iterator(halfedge2edge(mesh, border)));
+            PMP::split_long_edges(border, target_edge_length * 0.8, mesh);
+            // PMP::remove_almost_degenerate_faces(CGAL::faces(mesh), mesh);
+            // PMP::orient_to_bound_a_volume(mesh);
+            // PMP::angle_and_area_smoothing(mesh.faces(), mesh, CGAL::parameters::use_area_smoothing(false));
+
+            // using EIFMap = boost::property_map<SurfaceMesh, CGAL::edge_is_feature_t>::type;
+            // EIFMap eif = get(CGAL::edge_is_feature, mesh);
+            // PMP::detect_sharp_edges(mesh, 65, eif);
+
+            PMP::isotropic_remeshing(mesh.faces(), target_edge_length, mesh,
+                    CGAL::parameters::number_of_iterations(nb_iter)
+                        .do_flip(false)
+                        .do_project(true)
+                        .do_split(true)
+                        // .protect_constraints(true)
+                    ); //i.e. protect border, here
+        }
+
 
         PolyMesh remesh_delaunay() {
             // using EIFMap = boost::property_map<SurfaceMesh, CGAL::edge_is_feature_t>::type;
@@ -284,17 +338,19 @@ class PolyMesh {
                 std::cerr << "Input geometry is not triangulated." << std::endl;
                 return polyMesh;
             } else {
+                // domain.detect_features();
                 // Mesh criteria (no cell_size set)
                 Mesh_criteria criteria(CGAL::parameters::facet_angle(25)
                     .facet_size(0.5)
-                    // .facet_distance(0.008)
+                    .facet_distance(0.008)
+                    .manifold()
                     // .cell_radius_edge_ratio(3)
                 );
                 // Mesh generation
                 C3t3 c3t3 = CGAL::make_mesh_3<C3t3>(domain, criteria, CGAL::parameters::no_perturb().no_exude());
 
                 // Set tetrahedron size (keep cell_radius_edge_ratio), ignore facets
-                // Mesh_criteria new_criteria(CGAL::parameters::cell_radius_edge_ratio(3).cell_size(0.03));
+                // Mesh_criteria new_criteria(CGAL::parameters::cell_size(0.8));
 
                 // CGAL::refine_mesh_3(c3t3, domain, new_criteria, CGAL::parameters::manifold());
 
@@ -379,5 +435,8 @@ EMSCRIPTEN_BINDINGS(my_module) {
     .function("decimate", &PolyMesh::decimate, emscripten::allow_raw_pointers())
     .function("polyhedral_mesh_generation", &PolyMesh::polyhedral_mesh_generation, emscripten::allow_raw_pointers())
     .function("remesh_delaunay", &PolyMesh::remesh_delaunay, emscripten::allow_raw_pointers())
+    .function("refine", &PolyMesh::refine, emscripten::allow_raw_pointers())
+    .function("print_something", &PolyMesh::print_something, emscripten::allow_raw_pointers())
+    .function("print_max_edge_length", &PolyMesh::print_max_edge_length, emscripten::allow_raw_pointers())
     .function("remesh_isotropic", &PolyMesh::remesh_isotropic, emscripten::allow_raw_pointers());
 }
